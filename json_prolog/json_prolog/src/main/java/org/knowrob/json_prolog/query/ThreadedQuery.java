@@ -61,8 +61,6 @@ public class ThreadedQuery implements Runnable {
 
 	private QueryCommand currentCommand = null;
 
-	private Exception exception = null;
-
 	public ThreadedQuery(String queryString) {
 		this.queryString = queryString;
 	}
@@ -90,25 +88,18 @@ public class ThreadedQuery implements Runnable {
 		isClosed = false;
 		
 		// Create a query (bound to this thread)
-		try {
-			if(queryString!=null) {
-				query = new jpl.Query(queryString);
-			}
-			else if(queryTerm!=null) {
-				query = new jpl.Query(queryTerm);
-			}
-			else {
-				throw new RuntimeException("No query defined!");
-			}
+		if(queryString!=null) {
+			query = new jpl.Query(queryString);
 		}
-		catch(Exception exc) {
+		else if(queryTerm!=null) {
+			query = new jpl.Query(queryTerm);
+		}
+		else {
 			query = null;
 			isClosed = true;
 			isRunning = false;
-			exception  = exc;
 			return;
 		}
-		
 		// Wake up caller waiting on the thread to be started
 		synchronized (getQueryObject()) {
 			try { getQueryObject().notifyAll(); }
@@ -141,8 +132,6 @@ public class ThreadedQuery implements Runnable {
 			}
 		}
 		catch(Exception exc) {
-			exc.printStackTrace();
-			
 			// Notify caller that command finished
 			for(QueryCommand x : commadQueue) {
 				x.result = exc;
@@ -177,9 +166,6 @@ public class ThreadedQuery implements Runnable {
 
 	private Object runCommand(QueryCommand cmd) throws Exception {
 		waitOnThread();
-		if(exception!= null) {
-			throw exception;
-		}
 		if(isClosed || !isRunning) {
 		  throw new InterruptedException("Thread not running for query.");
 		}
@@ -188,6 +174,7 @@ public class ThreadedQuery implements Runnable {
 		synchronized (commadQueue) { commadQueue.push(cmd); }
 		// wake up query thread
 		synchronized (this) { this.notifyAll(); }
+
 		if(cmd.result==null) {
 			synchronized(cmd) {
 				try { cmd.wait(); }

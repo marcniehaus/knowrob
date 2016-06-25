@@ -38,21 +38,11 @@ import jpl.Term;
 public final class PrologAllSolutions implements PrologSolutions {
 
   private int currentIndex = 0;
-  Hashtable<String, jpl.Term>[] solutions = null;
-  ThreadedQuery query = null;
+  Hashtable<String, jpl.Term>[] solutions;
   
   public PrologAllSolutions(ThreadedQuery query) throws Exception {
-	  this.query = query;
-  }
-  
-  private Hashtable<String, jpl.Term>[] getSolutions() throws Exception {
-	  // Compute solutions
-	  if(solutions == null) {
-		  solutions = query.allSolutions();
-		  query.close();
-		  query = null;
-	  }
-	  return solutions;
+    solutions = query.allSolutions();
+    query.close();
   }
   
   @Override
@@ -67,13 +57,13 @@ public final class PrologAllSolutions implements PrologSolutions {
 
   @Override
   public Hashtable<String, Term> nextSolution() throws Exception {
-    Hashtable<String, jpl.Term> result = getSolutions()[currentIndex];
+    Hashtable<String, jpl.Term> result = solutions[currentIndex];
     currentIndex++;
     return result;
   }
 
   @Override
   public boolean hasMoreSolutions() throws Exception {
-    return currentIndex < getSolutions().length;
+    return currentIndex < solutions.length;
   }
 }

@@ -31,6 +31,7 @@ package org.knowrob.json_prolog.query;
 
 import java.util.Hashtable;
 import java.util.LinkedList;
+import java.util.concurrent.Semaphore;
 
 import jpl.Term;
 
@@ -59,6 +60,8 @@ public class ThreadedQuery implements Runnable {
 	
 	private LinkedList<QueryCommand> commadQueue = new LinkedList<QueryCommand>();
 
+	private Semaphore commandQueueSemaphore;
+
 	public ThreadedQuery(String queryString) {
 		this.queryString = queryString;
 	}
@@ -69,6 +72,7 @@ public class ThreadedQuery implements Runnable {
 
 	@Override
 	public void run() {
+		commandQueueSemaphore = new Semaphore(0, true);
 		isStarted = true;
 		isClosed = false;
 		
@@ -88,21 +92,13 @@ public class ThreadedQuery implements Runnable {
 		
 		try {
 			while(isRunning) {
-				if(commadQueue.isEmpty()) {
-					// Wait for command to be pushed
-					synchronized (this) {
-						try {
-							this.wait();
-						}
-						catch (Exception e) {}
-					}
-				}
-				else {
+				commandQueueSemaphore.acquire();
+				if(isRunning) {
 					synchronized (commadQueue) {
 						cmd = commadQueue.poll();
 					}
 					cmd.result = cmd.execute(query);
-					if(cmd.result == null) {
+					if (cmd.result == null) {
 						cmd.result = new String("Result is null.");
 					}
 				}
@@ -111,11 +107,15 @@ public class ThreadedQuery implements Runnable {
 		catch(Exception exc) {
 			exc.printStackTrace();
 			// Notify caller that command finished
-			for(QueryCommand x : commadQueue) {
-				x.result = exc;
+			synchronized (commadQueue) {
+				for (QueryCommand x : commadQueue) {
+					x.result = exc;
+				}
 			}
-			if(cmd != null) {
-				cmd.result = exc;
+			synchronized (cmd) {
+				if(cmd != null) {
+					cmd.result = exc;
+				}
 			}
 		}
 
@@ -128,12 +128,13 @@ public class ThreadedQuery implements Runnable {
 		if(!isClosed && isRunning) {
 			isRunning = false;
 			// Notify caller that command finished
-			for(QueryCommand cmd : commadQueue) {
-				if(cmd.result==null)
-					cmd.result = new String("Query was closed.");
+			synchronized (commadQueue) {
+				for (QueryCommand cmd : commadQueue) {
+					if (cmd.result == null)
+						cmd.result = new String("Query was closed.");
+				}
 			}
-			// wake up query thread
-			synchronized (this) { this.notifyAll(); }
+			commandQueueSemaphore.release(Integer.MAX_VALUE);
 		}
 	}
 
@@ -145,8 +146,7 @@ public class ThreadedQuery implements Runnable {
 		cmd.result = null;
 		synchronized (commadQueue) { commadQueue.push(cmd); }
 		// wake up query thread
-		synchronized (this) { this.notifyAll(); }
-		
+		commandQueueSemaphore.release();
 		while(cmd.result==null) {
 			try {
 				Thread.sleep(1);
